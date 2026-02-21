@@ -1,16 +1,18 @@
 # Open Bug Reporter
 
-Esto nació por una necesidad real: en un equipo chico, perder tiempo explicando bugs por chat es carísimo.  
-La idea es simple: el **Developer** captura pantalla, anota encima, y el **QA Tester** recibe un mail con contexto útil en segundos.
+English | [Español](README.es.md)
 
-No pretende ser una plataforma gigante. Es una herramienta rápida para equipos que construyen y necesitan feedback claro.
+This tool came from a real team bottleneck: bug reports sent by chat usually miss context and waste time.
+With Open Bug Reporter, a **QA Tester** can capture and annotate the current screen, and a **Developer** receives the report by email in seconds.
+
+It is intentionally simple: fast reporting, clear context, low setup friction.
 
 ## Stack
 - Chrome Extension (Manifest V3)
 - Firebase Cloud Functions v2 (Node.js 20)
-- Resend (envío de correo)
+- Resend (email delivery)
 
-## Estructura
+## Project Structure
 ```text
 .
 ├─ extension/
@@ -32,14 +34,14 @@ No pretende ser una plataforma gigante. Es una herramienta rápida para equipos 
 └─ firebase.json
 ```
 
-## Flujo Técnico (real)
-1. Popup: Developer carga nombre, comentario y pasos.
-2. `background.js`: captura la pestaña activa.
-3. `content.js`: abre overlay para dibujar (brush + rect).
-4. `content.js`: envía JSON al backend.
-5. `submitBugReport`: valida payload + arma mail + adjunta PNG.
+## Real Flow
+1. Reporter opens the popup and fills name, comment, and optional steps.
+2. `background.js` captures the active tab screenshot.
+3. `content.js` opens a full-screen overlay to annotate (brush + rectangle).
+4. `content.js` sends JSON to the backend.
+5. `submitBugReport` validates payload and sends an email with PNG attachment.
 
-Payload actual:
+Current payload:
 - `developer`
 - `comment`
 - `steps`
@@ -47,34 +49,36 @@ Payload actual:
 - `viewport`
 - `imageBase64`
 
-Nota: el frontend y backend aceptan claves legacy (`comentario`, `pasos`, etc.) para no romper despliegues a medias.
+Compatibility note: frontend and backend still accept legacy keys (`comentario`, `pasos`, etc.) during migrations.
 
-## Requisitos
+## Requirements
 - Node.js 20+
 - Firebase CLI
-- Proyecto Firebase con plan Blaze
-- Dominio verificado en Resend (`your-domain.com`)
+- Firebase project on Blaze plan
+- Verified Resend domain (`your-domain.com`)
 
-## 1) Configurar Functions
+## 1) Configure Functions
 ```bash
 cd firebase/functions
 npm install
 cp .env.example .env
 ```
 
-Editar `.env`:
+Edit `.env`:
 ```env
 RESEND_API_KEY=re_xxxxxxxxxxxxxxxxxxxxx
 QA_REPORT_TO=YOUR_EMAIL@example.com
 QA_REPORT_FROM=Open Bug Reporter <no-reply@your-domain.com>
 ```
 
-## 2) Configurar Proyecto Firebase
+`QA_REPORT_TO` is the report recipient mailbox (commonly a Developer inbox).
+
+## 2) Configure Firebase Project
 ```bash
 cp .firebaserc.example .firebaserc
 ```
 
-En `.firebaserc`, reemplazar:
+Then replace the project id in `.firebaserc`:
 ```json
 {
   "projects": {
@@ -84,7 +88,7 @@ En `.firebaserc`, reemplazar:
 ```
 
 ## 3) Deploy
-Desde la raíz:
+From project root:
 ```bash
 firebase login
 firebase deploy --only functions:submitBugReport
@@ -95,37 +99,37 @@ Logs:
 firebase functions:log --only submitBugReport
 ```
 
-## 4) Configurar Extensión
+## 4) Configure Extension
 ```bash
 cp extension/config.example.js extension/config.js
 ```
 
-Editar `extension/config.js`:
+Edit `extension/config.js`:
 ```js
 export const APP_CONFIG = {
   functionUrl: "https://us-central1-your-project-id.cloudfunctions.net/submitBugReport"
 };
 ```
 
-## 5) Cargar en Chrome
-1. Ir a `chrome://extensions`
-2. Activar Developer mode
-3. Click en Load unpacked
-4. Seleccionar `extension/`
+## 5) Load in Chrome
+1. Go to `chrome://extensions`
+2. Enable Developer mode
+3. Click Load unpacked
+4. Select `extension/`
 
-## Troubleshooting corto
+## Troubleshooting
 - `Receiving end does not exist`
-  - Normal después de recargar la extensión. El background intenta inyectar `content.js` en caliente.
+  - Common right after reloading the extension. The background script attempts runtime injection of `content.js`.
 
-- Error de deploy por billing/APIs
-  - Activar Blaze y redeploy.
+- Deploy fails due to billing/APIs
+  - Enable Blaze and redeploy.
 
-- No llega email
-  - Revisar `RESEND_API_KEY`, dominio verificado y logs de function.
+- Email is not delivered
+  - Verify `RESEND_API_KEY`, domain verification status, and function logs.
 
-## Limitaciones conocidas
-- Endpoint público por simplicidad. Si lo abrís a internet, agregá auth/rate-limit.
-- Capturas muy grandes pueden fallar por tamaño de payload.
+## Known Limitations
+- Endpoint is public by default. Add auth/rate-limit if exposed to the internet.
+- Very large screenshots can fail due to payload size limits.
 
 ## License
 MIT (`LICENSE`).
