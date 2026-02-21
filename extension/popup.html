@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Open Bug Reporter</title>
+    <link rel="stylesheet" href="popup.css" />
+  </head>
+  <body>
+    <main class="panel">
+      <header class="panel__header">
+        <p class="eyebrow">Open QA Toolkit</p>
+        <h1>Bug Report</h1>
+      </header>
+
+      <form id="qa-form" class="form">
+        <label>
+          Developer name
+          <input id="reporter" type="text" placeholder="Example: Alex Dev" required />
+        </label>
+
+        <label>
+          Bug description
+          <textarea id="comentario" rows="3" placeholder="What is happening..." required></textarea>
+        </label>
+
+        <label>
+          Steps to reproduce
+          <textarea id="pasos" rows="2" placeholder="1. ... 2. ..."></textarea>
+        </label>
+
+        <button type="submit" id="start-btn">Capture and annotate</button>
+      </form>
+
+      <p id="status" class="status"></p>
+    </main>
+
+    <script type="module" src="popup.js"></script>
+  </body>
+</html>

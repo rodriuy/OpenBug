@@ -1,0 +1,26 @@
+{
+  "manifest_version": 3,
+  "name": "Open Bug Reporter",
+  "description": "Capture and annotate bugs from Chrome, then send reports to a QA Tester via Firebase + Resend.",
+  "version": "1.0.0",
+  "action": {
+    "default_title": "Open Bug Reporter",
+    "default_popup": "popup.html"
+  },
+  "permissions": ["activeTab", "tabs", "scripting", "storage"],
+  "host_permissions": [
+    "https://*.cloudfunctions.net/*",
+    "https://*.run.app/*"
+  ],
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    }
+  ]
+}
