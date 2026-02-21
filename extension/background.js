@@ -1,11 +1,14 @@
 import { APP_CONFIG } from "./config.js";
 
+const MSG_START = "START_BUG_REPORT";
+const MSG_OPEN_EDITOR = "OPEN_BUG_EDITOR";
+
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-  if (message?.type !== "START_BUG_REPORT") {
+  if (message?.type !== MSG_START) {
     return;
   }
 
-  handleStartBugReport(message.payload)
+  startBugFlow(message.payload)
     .then(() => sendResponse({ ok: true }))
     .catch((error) => {
       sendResponse({ ok: false, error: error.message });
@@ -14,7 +17,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   return true;
 });
 
-async function handleStartBugReport(payload) {
+async function startBugFlow(payload) {
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
   if (!tab?.id) {
     throw new Error("Could not detect the active tab.");
@@ -23,19 +26,19 @@ async function handleStartBugReport(payload) {
     throw new Error("Open an HTTP/HTTPS website and try again.");
   }
 
-  const screenshotDataUrl = await chrome.tabs.captureVisibleTab(tab.windowId, {
+  const shotDataUrl = await chrome.tabs.captureVisibleTab(tab.windowId, {
     format: "png"
   });
 
-  await sendMessageToEditor(tab.id, {
-    type: "OPEN_BUG_EDITOR",
+  await openEditor(tab.id, {
+    type: MSG_OPEN_EDITOR,
     payload: {
       functionUrl: APP_CONFIG.functionUrl,
-      screenshotDataUrl,
+      shotDataUrl,
       report: {
-        reporter: payload.reporter,
-        comentario: payload.comentario,
-        pasos: payload.pasos || "",
+        developer: payload?.developer || payload?.reporter || "",
+        comment: payload?.comment || payload?.comentario || "",
+        steps: payload?.steps || payload?.pasos || "",
         pageUrl: tab.url || ""
       }
     }
@@ -46,7 +49,7 @@ function isSupportedUrl(url) {
   return typeof url === "string" && /^https?:\/\//i.test(url);
 }
 
-async function sendMessageToEditor(tabId, message) {
+async function openEditor(tabId, message) {
   try {
     await chrome.tabs.sendMessage(tabId, message);
     return;
@@ -59,6 +62,8 @@ async function sendMessageToEditor(tabId, message) {
   }
 
   try {
+    // After extension reload, content scripts are often missing on old tabs.
+    // Inject on-demand instead of forcing the user to reload the page.
     await chrome.scripting.executeScript({
       target: { tabId },
       files: ["content.js"]

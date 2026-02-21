@@ -1,13 +1,16 @@
 # Open Bug Reporter
 
-Open source bug reporting toolkit for web teams. A **Developer** can capture and annotate the current browser view from a Chrome extension, then submit the report to a **QA Tester** by email using Firebase Cloud Functions + Resend.
+Esto nació por una necesidad real: en un equipo chico, perder tiempo explicando bugs por chat es carísimo.  
+La idea es simple: el **Developer** captura pantalla, anota encima, y el **QA Tester** recibe un mail con contexto útil en segundos.
 
-## Tech Stack
+No pretende ser una plataforma gigante. Es una herramienta rápida para equipos que construyen y necesitan feedback claro.
+
+## Stack
 - Chrome Extension (Manifest V3)
 - Firebase Cloud Functions v2 (Node.js 20)
-- Resend (email delivery)
+- Resend (envío de correo)
 
-## Project Structure
+## Estructura
 ```text
 .
 ├─ extension/
@@ -29,56 +32,49 @@ Open source bug reporting toolkit for web teams. A **Developer** can capture and
 └─ firebase.json
 ```
 
-## How It Works
-1. The **Developer** opens the extension popup and fills name, bug description, and optional steps.
-2. `background.js` captures the visible tab with `chrome.tabs.captureVisibleTab`.
-3. `content.js` opens a full-screen canvas for annotation (red brush + rectangle).
-4. The Developer clicks **Finish and Send**.
-5. The extension sends a `POST` request to `submitBugReport` with:
-   - `comentario`
-   - `pasos`
-   - `url`
-   - `resolucion`
-   - `imagenBase64`
-6. Firebase Function sends an email with the annotated screenshot attachment to the **QA Tester**.
+## Flujo Técnico (real)
+1. Popup: Developer carga nombre, comentario y pasos.
+2. `background.js`: captura la pestaña activa.
+3. `content.js`: abre overlay para dibujar (brush + rect).
+4. `content.js`: envía JSON al backend.
+5. `submitBugReport`: valida payload + arma mail + adjunta PNG.
 
-## Requirements
+Payload actual:
+- `developer`
+- `comment`
+- `steps`
+- `pageUrl`
+- `viewport`
+- `imageBase64`
+
+Nota: el frontend y backend aceptan claves legacy (`comentario`, `pasos`, etc.) para no romper despliegues a medias.
+
+## Requisitos
 - Node.js 20+
 - Firebase CLI
-- Firebase project on **Blaze** plan (required for Functions v2)
-- Resend account with a verified sending domain (for example: `your-domain.com`)
+- Proyecto Firebase con plan Blaze
+- Dominio verificado en Resend (`your-domain.com`)
 
-## 1) Backend Setup (Firebase Functions)
-From `firebase/functions`:
-
+## 1) Configurar Functions
 ```bash
+cd firebase/functions
 npm install
 cp .env.example .env
 ```
 
-Edit `.env`:
-
+Editar `.env`:
 ```env
 RESEND_API_KEY=re_xxxxxxxxxxxxxxxxxxxxx
 QA_REPORT_TO=YOUR_EMAIL@example.com
 QA_REPORT_FROM=Open Bug Reporter <no-reply@your-domain.com>
 ```
 
-Notes:
-- `QA_REPORT_TO`: mailbox used by the QA Tester.
-- `QA_REPORT_FROM`: verified sender identity in Resend.
-
-Optional (legacy Firebase config support in code):
-
+## 2) Configurar Proyecto Firebase
 ```bash
-firebase functions:config:set resend.api_key="re_xxxxxxxxxxxxxxxxxxxxx"
+cp .firebaserc.example .firebaserc
 ```
 
-## 2) Firebase Project Setup
-1. Duplicate `.firebaserc.example` as `.firebaserc`.
-2. Replace `your-firebase-project-id` with your real project id.
-
-Example:
+En `.firebaserc`, reemplazar:
 ```json
 {
   "projects": {
@@ -87,70 +83,49 @@ Example:
 }
 ```
 
-## 3) Deploy Function
-From project root:
-
+## 3) Deploy
+Desde la raíz:
 ```bash
 firebase login
 firebase deploy --only functions:submitBugReport
 ```
 
-Check logs:
-
+Logs:
 ```bash
 firebase functions:log --only submitBugReport
 ```
 
-## 4) Extension Setup
-Copy the example config and set your deployed function URL:
-
+## 4) Configurar Extensión
 ```bash
 cp extension/config.example.js extension/config.js
 ```
 
-Then edit `extension/config.js`:
-
+Editar `extension/config.js`:
 ```js
 export const APP_CONFIG = {
   functionUrl: "https://us-central1-your-project-id.cloudfunctions.net/submitBugReport"
 };
 ```
 
-## 5) Load Extension in Chrome
-1. Open `chrome://extensions`.
-2. Enable **Developer mode**.
-3. Click **Load unpacked**.
-4. Select `extension/`.
+## 5) Cargar en Chrome
+1. Ir a `chrome://extensions`
+2. Activar Developer mode
+3. Click en Load unpacked
+4. Seleccionar `extension/`
 
-## Host Permissions (MV3)
-`extension/manifest.json` includes:
+## Troubleshooting corto
+- `Receiving end does not exist`
+  - Normal después de recargar la extensión. El background intenta inyectar `content.js` en caliente.
 
-```json
-"host_permissions": [
-  "https://*.cloudfunctions.net/*",
-  "https://*.run.app/*"
-]
-```
+- Error de deploy por billing/APIs
+  - Activar Blaze y redeploy.
 
-This is required for `fetch` calls from the extension to Firebase endpoints in Manifest V3.
+- No llega email
+  - Revisar `RESEND_API_KEY`, dominio verificado y logs de function.
 
-## End-to-End Test
-1. Open a normal website (`http://` or `https://`).
-2. Open extension popup.
-3. Fill report fields and click **Capture and annotate**.
-4. Draw on screenshot and click **Finish and Send**.
-5. Confirm email arrives in the QA Tester inbox.
-
-## Troubleshooting
-- `Manifest file is missing or unreadable`
-  - You selected the wrong folder. Load the folder that contains `manifest.json`.
-
-- `Could not establish connection. Receiving end does not exist`
-  - Reload the extension in `chrome://extensions`.
-  - Retry on an `http/https` page (not `chrome://`).
-
-- Firebase deploy error related to billing/APIs
-  - Enable Blaze plan and retry deployment.
+## Limitaciones conocidas
+- Endpoint público por simplicidad. Si lo abrís a internet, agregá auth/rate-limit.
+- Capturas muy grandes pueden fallar por tamaño de payload.
 
 ## License
-MIT (see `LICENSE`).
+MIT (`LICENSE`).

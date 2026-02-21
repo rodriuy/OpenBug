@@ -1,47 +1,50 @@
 import { APP_CONFIG } from "./config.js";
 
-const form = document.getElementById("qa-form");
-const reporterInput = document.getElementById("reporter");
-const comentarioInput = document.getElementById("comentario");
-const pasosInput = document.getElementById("pasos");
+const MSG_START = "START_BUG_REPORT";
+const STORAGE_DEV = "obr.devName";
+
+const form = document.getElementById("bug-form");
+const developerInput = document.getElementById("developer");
+const commentInput = document.getElementById("comment");
+const stepsInput = document.getElementById("steps");
 const startBtn = document.getElementById("start-btn");
 const status = document.getElementById("status");
 
-chrome.storage.local.get(["open_bug_reporter_developer"], (result) => {
-  if (result.open_bug_reporter_developer) {
-    reporterInput.value = result.open_bug_reporter_developer;
+chrome.storage.local.get([STORAGE_DEV], (result) => {
+  if (result[STORAGE_DEV]) {
+    developerInput.value = result[STORAGE_DEV];
   }
 });
 
 form.addEventListener("submit", async (event) => {
   event.preventDefault();
 
-  const reporter = reporterInput.value.trim();
-  const comentario = comentarioInput.value.trim();
-  const pasos = pasosInput.value.trim();
+  const developer = developerInput.value.trim();
+  const comment = commentInput.value.trim();
+  const steps = stepsInput.value.trim();
 
-  if (!reporter || !comentario) {
+  if (!developer || !comment) {
     status.textContent = "Developer name and bug description are required.";
     return;
   }
 
-  if (!APP_CONFIG.functionUrl.includes("cloudfunctions.net") && !APP_CONFIG.functionUrl.includes("run.app")) {
+  if (!isFunctionUrl(APP_CONFIG.functionUrl)) {
     status.textContent = "Set your Firebase Function URL in config.js";
     return;
   }
 
-  chrome.storage.local.set({ open_bug_reporter_developer: reporter });
+  chrome.storage.local.set({ [STORAGE_DEV]: developer });
 
   startBtn.disabled = true;
   status.textContent = "Capturing screen...";
 
   try {
     const response = await chrome.runtime.sendMessage({
-      type: "START_BUG_REPORT",
+      type: MSG_START,
       payload: {
-        reporter,
-        comentario,
-        pasos
+        developer,
+        comment,
+        steps
       }
     });
 
@@ -56,3 +59,10 @@ form.addEventListener("submit", async (event) => {
     startBtn.disabled = false;
   }
 });
+
+function isFunctionUrl(value) {
+  if (typeof value !== "string") {
+    return false;
+  }
+  return value.includes("cloudfunctions.net") || value.includes("run.app");
+}

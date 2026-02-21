@@ -1,10 +1,7 @@
-# Environment files
 .env
 .env.*
 **/.env
 **/.env.*
-
-# Keep env templates
 !.env.example
 !**/.env.example
 !.env.sample

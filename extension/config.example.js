@@ -1,4 +1,4 @@
 export const APP_CONFIG = {
-  // Replace with your deployed Firebase HTTP Function URL.
+  // Keep this pointing to a single endpoint; debugging gets painful if QA reports split across URLs.
   functionUrl: "https://us-central1-your-project-id.cloudfunctions.net/submitBugReport"
 };

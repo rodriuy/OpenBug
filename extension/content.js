@@ -1,12 +1,15 @@
 (() => {
+  const MSG_OPEN_EDITOR = "OPEN_BUG_EDITOR";
   const TOOL_BRUSH = "brush";
   const TOOL_RECT = "rect";
   const DRAW_COLOR = "#e03131";
+  const REQUEST_TIMEOUT_MS = 20000;
+  const MAX_IMAGE_DATA_URL_LEN = 10_000_000;
 
   let overlayRoot = null;
 
   chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-    if (message?.type !== "OPEN_BUG_EDITOR") {
+    if (message?.type !== MSG_OPEN_EDITOR) {
       return;
     }
 
@@ -18,7 +21,8 @@
   });
 
   async function openEditor(payload) {
-    if (!payload?.screenshotDataUrl || !payload?.functionUrl) {
+    const shotDataUrl = payload?.shotDataUrl || payload?.screenshotDataUrl;
+    if (!shotDataUrl || !payload?.functionUrl) {
       throw new Error("Incomplete payload for bug editor.");
     }
 
@@ -127,11 +131,17 @@
     const closeBtn = overlayRoot.querySelector("#open-close-btn");
     const status = overlayRoot.querySelector("#open-bug-status");
 
-    canvas.width = window.innerWidth;
-    canvas.height = window.innerHeight;
+    const dpr = Math.max(1, window.devicePixelRatio || 1);
+    const viewW = window.innerWidth;
+    const viewH = window.innerHeight;
+    canvas.width = Math.floor(viewW * dpr);
+    canvas.height = Math.floor(viewH * dpr);
+    canvas.style.width = `${viewW}px`;
+    canvas.style.height = `${viewH}px`;
+    ctx.scale(dpr, dpr);
 
-    const screenshot = await loadImage(payload.screenshotDataUrl);
-    ctx.drawImage(screenshot, 0, 0, canvas.width, canvas.height);
+    const screenshot = await loadImage(shotDataUrl);
+    ctx.drawImage(screenshot, 0, 0, viewW, viewH);
 
     ctx.strokeStyle = DRAW_COLOR;
     ctx.lineWidth = 4;
@@ -144,8 +154,9 @@
       startX: 0,
       startY: 0,
       snapshot: null,
-      report: payload.report,
-      functionUrl: payload.functionUrl
+      report: normalizeReport(payload.report),
+      functionUrl: payload.functionUrl,
+      viewport: `${viewW}x${viewH}`
     };
 
     const setTool = (tool) => {
@@ -164,26 +175,29 @@
         sendBtn.disabled = true;
         status.textContent = "Sending report to QA Tester...";
 
-        const imagenBase64 = canvas.toDataURL("image/png");
-        const comentario = `${state.report.reporter}: ${state.report.comentario}`;
+        const imageBase64 = canvas.toDataURL("image/png");
+        if (imageBase64.length > MAX_IMAGE_DATA_URL_LEN) {
+          throw new Error("Screenshot is too large. Try again with less zoom.");
+        }
 
-        const response = await fetch(state.functionUrl, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json"
-          },
-          body: JSON.stringify({
-            comentario,
-            pasos: state.report.pasos || "Not provided",
-            url: state.report.pageUrl || window.location.href,
-            resolucion: `${window.innerWidth}x${window.innerHeight}`,
-            imagenBase64
-          })
-        });
+        const payload = {
+          developer: state.report.developer,
+          comment: state.report.comment,
+          steps: state.report.steps || "Not provided",
+          pageUrl: state.report.pageUrl || window.location.href,
+          viewport: state.viewport,
+          imageBase64,
+          // Future-me note: keep legacy keys for older functions during upgrades.
+          comentario: state.report.comment,
+          pasos: state.report.steps || "Not provided",
+          url: state.report.pageUrl || window.location.href,
+          resolucion: state.viewport,
+          imagenBase64: imageBase64
+        };
 
+        const response = await postJson(state.functionUrl, payload, REQUEST_TIMEOUT_MS);
         if (!response.ok) {
-          const body = await response.text();
-          throw new Error(body || `HTTP ${response.status}`);
+          throw new Error(response.error || `HTTP ${response.status}`);
         }
 
         status.textContent = "Report sent successfully";
@@ -191,7 +205,7 @@
       } catch (error) {
         console.error(error);
         sendBtn.disabled = false;
-        status.textContent = "Send failed. Check browser console.";
+        status.textContent = error.message || "Send failed. Check browser console.";
       }
     });
 
@@ -265,6 +279,53 @@
       x: event.clientX - rect.left,
       y: event.clientY - rect.top
     };
+  }
+
+  function normalizeReport(input = {}) {
+    return {
+      developer: String(input.developer || input.reporter || "").trim(),
+      comment: String(input.comment || input.comentario || "").trim(),
+      steps: String(input.steps || input.pasos || "").trim(),
+      pageUrl: String(input.pageUrl || input.url || "").trim()
+    };
+  }
+
+  async function postJson(url, body, timeoutMs) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+
+    try {
+      const res = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+        signal: controller.signal
+      });
+
+      const text = await res.text();
+      let data = null;
+      if (text) {
+        try {
+          data = JSON.parse(text);
+        } catch {
+          data = { error: text };
+        }
+      }
+
+      return {
+        ok: res.ok && data?.ok !== false,
+        status: res.status,
+        error: data?.error,
+        data
+      };
+    } catch (error) {
+      if (error.name === "AbortError") {
+        return { ok: false, status: 408, error: "Request timed out. Check network or function URL." };
+      }
+      return { ok: false, status: 0, error: error.message || "Request failed" };
+    } finally {
+      clearTimeout(timer);
+    }
   }
 
   function loadImage(src) {

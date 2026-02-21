@@ -16,6 +16,10 @@ function escapeHtml(value) {
     .replace(/'/g, "&#039;");
 }
 
+function asString(value) {
+  return typeof value === "string" ? value.trim() : "";
+}
+
 function getResendApiKey() {
   if (process.env.RESEND_API_KEY) {
     return process.env.RESEND_API_KEY;
@@ -36,6 +40,7 @@ exports.submitBugReport = onRequest(
     invoker: "public"
   },
   async (req, res) => {
+    // Chrome extension requests can preflight. Keep explicit headers here so debugging is deterministic.
     res.set("Access-Control-Allow-Origin", "*");
     res.set("Access-Control-Allow-Headers", "Content-Type");
     res.set("Access-Control-Allow-Methods", "POST, OPTIONS");
@@ -48,18 +53,25 @@ exports.submitBugReport = onRequest(
       return res.status(405).json({ ok: false, error: "Method not allowed" });
     }
 
-    const { comentario, pasos, url, resolucion, imagenBase64 } = req.body || {};
+    const body = req.body || {};
+    const developer = asString(body.developer || body.reporter);
+    const comment = asString(body.comment || body.comentario);
+    const steps = asString(body.steps || body.pasos) || "Not provided";
+    const pageUrl = asString(body.pageUrl || body.url);
+    const viewport = asString(body.viewport || body.resolucion);
+    const imageBase64 = asString(body.imageBase64 || body.imagenBase64);
 
     if (
-      typeof comentario !== "string" ||
-      typeof pasos !== "string" ||
-      typeof url !== "string" ||
-      typeof resolucion !== "string" ||
-      typeof imagenBase64 !== "string"
+      !developer ||
+      !comment ||
+      !pageUrl ||
+      !viewport ||
+      !imageBase64
     ) {
       return res.status(400).json({
         ok: false,
-        error: "Invalid payload. Include comentario, pasos, url, resolucion, and imagenBase64."
+        error:
+          "Invalid payload. Include developer, comment, pageUrl, viewport, and imageBase64 (steps is optional)."
       });
     }
 
@@ -75,18 +87,24 @@ exports.submitBugReport = onRequest(
     const reportTo = process.env.QA_REPORT_TO || "YOUR_EMAIL@example.com";
     const reportFrom = process.env.QA_REPORT_FROM || "Open Bug Reporter <no-reply@your-domain.com>";
 
-    const imageMatch = imagenBase64.match(/^data:(image\/[a-zA-Z0-9.+-]+);base64,(.+)$/);
-    const imageContent = imageMatch ? imageMatch[2] : imagenBase64;
+    if (imageBase64.length > 10_000_000) {
+      return res.status(413).json({ ok: false, error: "Image payload too large" });
+    }
+
+    const imageMatch = imageBase64.match(/^data:(image\/[a-zA-Z0-9.+-]+);base64,(.+)$/);
+    const imageContent = imageMatch ? imageMatch[2] : imageBase64;
+    const pageHost = getHostOrFallback(pageUrl);
 
     const html = `
       <div style="font-family:Arial,sans-serif;line-height:1.5;color:#0f172a">
         <h2 style="margin-bottom:4px">New bug report for QA Tester</h2>
         <p style="margin-top:0;color:#475569">Open Bug Reporter</p>
         <hr style="border:none;border-top:1px solid #e2e8f0" />
-        <p><strong>Developer comment:</strong><br/>${escapeHtml(comentario)}</p>
-        <p><strong>Steps to reproduce:</strong><br/>${escapeHtml(pasos)}</p>
-        <p><strong>URL:</strong><br/>${escapeHtml(url)}</p>
-        <p><strong>Resolution:</strong> ${escapeHtml(resolucion)}</p>
+        <p><strong>Developer:</strong> ${escapeHtml(developer)}</p>
+        <p><strong>Comment:</strong><br/>${escapeHtml(comment)}</p>
+        <p><strong>Steps to reproduce:</strong><br/>${escapeHtml(steps)}</p>
+        <p><strong>URL:</strong><br/>${escapeHtml(pageUrl)}</p>
+        <p><strong>Viewport:</strong> ${escapeHtml(viewport)}</p>
         <p><strong>Date:</strong> ${new Date().toISOString()}</p>
       </div>
     `;
@@ -95,7 +113,7 @@ exports.submitBugReport = onRequest(
       const { data, error } = await resend.emails.send({
         from: reportFrom,
         to: [reportTo],
-        subject: `Bug Report - ${url.slice(0, 80)}`,
+        subject: `[Bug] ${pageHost} - ${developer}`,
         html,
         attachments: [
           {
@@ -117,3 +135,11 @@ exports.submitBugReport = onRequest(
     }
   }
 );
+
+function getHostOrFallback(value) {
+  try {
+    return new URL(value).host || "unknown-host";
+  } catch {
+    return "unknown-host";
+  }
+}
